@@ -1,3 +1,14 @@
+"""
+- 문제점
+  => train, validation, test로 data를 분리하여 학습을 시켰으나, 이미지가 학습할 수 없음 (포켓몬 진화 전, 후 형태가 너무 달라 학습 불가
+  => 과소 적합 (같은 이미지가 없으므로 학습 불가.)
+
+- 해결 방법
+  => final_images, final_labels -> crop, rotation augmentation
+     image size up
+     
+"""
+
 # %% Import libraries
 import os
 import numpy as np # linear algebra
@@ -5,6 +16,7 @@ import pandas as pd # data processing, CSV file I/O (e.g. pd.read_csv)
 import cv2
 import matplotlib.pyplot as plt
 
+from sklearn.model_selection import train_test_split
 # %% Import dataset
 
 # defining root directory
@@ -100,20 +112,20 @@ for file in File_names:
 # converting lists into numpy array
 # normalizing and reshaping the data
 final_images = np.array(final_images, dtype = np.float32) / 255.0
-
-# [Q] reshape를 (809, 1)로 해준 이유는?
 final_labels = np.array(final_labels, dtype = np.int8).reshape(809, 1)
 
 print('final_images',final_images)
 print('final_labels',final_labels[0])
 
 # %%
+# 훈련, 검증, 테스트 데이터 분리
+X_train, X_temp, y_train, y_temp = train_test_split(final_images, final_labels, test_size=0.4, random_state=42)
+X_val, X_test, y_val, y_test = train_test_split(X_temp, y_temp, test_size=0.5, random_state=42)
+
+# %%
 import tensorflow as tf
-from keras.models import Sequential
-from tensorflow.python.keras.layers import Dense, Activation, Flatten
 
 model = tf.keras.Sequential([
-    # [Q] input_shape를 (120, 120, 3)로 해준 이유?
     tf.keras.layers.Flatten(input_shape=(120, 120, 3)),
     tf.keras.layers.Dense(100, activation='relu'),
     tf.keras.layers.Dense(100, activation='relu'),
@@ -125,18 +137,32 @@ model.summary()
 
 # %%
 
-# [Q] SparseCategoricalCrossentropy가 뭐지?, 다른 로스 방법으로 적용해보기
 model.compile(optimizer="adam",
               loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
               metrics='accuracy')
 
-history = model.fit(final_images, final_labels, epochs=50)
 
+history = model.fit(X_train, y_train, epochs=50, validation_data=(X_val, y_val))
+
+
+# %%
+# 모델 평가
+test_loss, test_acc = model.evaluate(X_test, y_test, verbose=2)
+print('\n테스트 정확도:', test_acc)
 
 # %%
 
 probability_model = tf.keras.Sequential([model, tf.keras.layers.Softmax()])
 predictions = probability_model.predict(final_images)
+
+print('\n', predictions[0])
+id = np.argmax(predictions[0])
+print("\nid that we got from the model as prediction: {}\nType of pokemon associted with that id: {} ".format(id,labels[id]))
+print("accuracy of the model", history.history['accuracy'][-1])
+# %%
+
+probability_model = tf.keras.Sequential([model, tf.keras.layers.Softmax()])
+predictions = probability_model.predict(X_test)
 
 print('\n', predictions[0])
 id = np.argmax(predictions[0])
